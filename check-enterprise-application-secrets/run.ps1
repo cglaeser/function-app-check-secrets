@@ -28,9 +28,24 @@ try {
             Write-Host "Successfully connected using managed identity."
         }
         catch {
-            Write-Host "Managed identity authentication failed: $($_.Exception.Message)"
-            Write-Host "Falling back to interactive authentication..."
-            Connect-MgGraph -Scopes "Application.Read.All" -NoWelcome
+            $errorMessage = "Managed identity authentication failed in Azure environment: $($_.Exception.Message)"
+            Write-Host $errorMessage
+            
+            $errorResponse = @{
+                Success = $false
+                Error = "Authentication Failed"
+                Details = $errorMessage
+                Solution = "Ensure the Function App's managed identity is enabled and has 'Application.Read.All' permissions in Microsoft Graph."
+            } | ConvertTo-Json -Depth 5
+            
+            Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+                StatusCode = [HttpStatusCode]::Unauthorized
+                Body = $errorResponse
+                Headers = @{
+                    'Content-Type' = 'application/json'
+                }
+            })
+            return
         }
     }
     else {

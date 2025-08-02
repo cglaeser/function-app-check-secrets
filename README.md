@@ -1,19 +1,29 @@
-# Azure Function: Enterprise Application Secrets & Certificates Checker
+# Azure Function App: Secrets & Certificates Expiration Checker
 
-This Azure Function checks for expired and expiring secrets and certificates across Azure Enterprise Applications (Service Principals).
+This Azure Function App contains multiple functions to check for expired and expiring secrets and certificates across different Azure services.
+
+## Functions Included
+
+### 1. **Enterprise Application Secrets & Certificates Checker**
+
+- **Endpoint**: `/api/check-enterprise-application-secrets`
+- **Purpose**: Checks expired/expiring secrets and certificates in Azure Enterprise Applications (Service Principals)
+
+### 2. **Key Vault Secrets Expiration Checker**
+
+- **Endpoint**: `/api/check-key-vault-secrets`
+- **Purpose**: Checks expired/expiring secrets across all Key Vaults in a subscription
 
 ## Features
 
-- ✅ Check secrets (password credentials) expiration
-- ✅ Check certificates (key credentials) expiration
+- ✅ **Enterprise Applications**: Check secrets (password credentials) and certificates expiration
+- ✅ **Key Vault Secrets**: Check secret expiration across all Key Vaults in subscription
 - ✅ Configurable expiration threshold
-- ✅ Filter by specific application ID
+- ✅ Filter by specific application ID or Key Vault name
 - ✅ Comprehensive reporting with summary statistics
 - ✅ Proper error handling and logging
 - ✅ **Smart Authentication**: Uses managed identity in Azure, interactive login locally
-- ✅ **Local Development Support**: Automatic fallback to interactive authentication for testing
-
-## Authentication Methods
+- ✅ **Local Development Support**: Automatic fallback to interactive authentication for testing## Authentication Methods
 
 This function supports two authentication methods:
 
@@ -143,6 +153,141 @@ curl "https://your-function-app.azurewebsites.net/api/check-enterprise-applicati
 }
 ```
 
+---
+
+## Key Vault Secrets API
+
+### Endpoint
+
+```
+GET/POST https://<function-app-name>.azurewebsites.net/api/check-key-vault-secrets
+```
+
+### Query Parameters
+
+| Parameter        | Type   | Default | Description                                        |
+| ---------------- | ------ | ------- | -------------------------------------------------- |
+| `DaysThreshold`  | int    | 30      | Number of days ahead to check for expiring secrets |
+| `KeyVaultName`   | string | null    | Specific Key Vault name to check (optional)        |
+| `SecretName`     | string | null    | Specific secret name to check (optional)           |
+| `SubscriptionId` | string | null    | Specific subscription ID to use (optional)         |
+
+### Example Requests
+
+#### Check all Key Vaults with default 30-day threshold
+
+```bash
+curl "https://your-function-app.azurewebsites.net/api/check-key-vault-secrets?code=<function-key>"
+```
+
+#### Check with 90-day threshold
+
+```bash
+curl "https://your-function-app.azurewebsites.net/api/check-key-vault-secrets?DaysThreshold=90&code=<function-key>"
+```
+
+#### Check specific Key Vault
+
+```bash
+curl "https://your-function-app.azurewebsites.net/api/check-key-vault-secrets?KeyVaultName=my-key-vault&code=<function-key>"
+```
+
+#### Check specific secret in specific Key Vault
+
+```bash
+curl "https://your-function-app.azurewebsites.net/api/check-key-vault-secrets?KeyVaultName=my-key-vault&SecretName=my-secret&code=<function-key>"
+```
+
+### Response Format
+
+#### Success Response
+
+```json
+{
+  "Success": true,
+  "Summary": {
+    "TotalKeyVaultsChecked": 5,
+    "TotalSecretsChecked": 25,
+    "KeyVaultsWithExpiringCredentials": 2,
+    "ExpiredSecrets": 1,
+    "ExpiringSecrets": 3,
+    "InaccessibleKeyVaults": 0,
+    "CheckDate": "2025-08-02 10:30:00 UTC",
+    "DaysThreshold": 30,
+    "SubscriptionId": "12345678-1234-1234-1234-123456789012",
+    "SubscriptionName": "Production Subscription"
+  },
+  "KeyVaultsChecked": [
+    {
+      "VaultName": "prod-key-vault",
+      "ResourceGroupName": "production-rg",
+      "Location": "East US",
+      "SecretsChecked": 15,
+      "ExpiringSecrets": 2,
+      "ExpiredSecrets": 1,
+      "Status": "Accessible",
+      "ErrorMessage": null
+    },
+    {
+      "VaultName": "dev-key-vault",
+      "ResourceGroupName": "development-rg",
+      "Location": "West US",
+      "SecretsChecked": 10,
+      "ExpiringSecrets": 1,
+      "ExpiredSecrets": 0,
+      "Status": "Accessible",
+      "ErrorMessage": null
+    }
+  ],
+  "ExpiringSecrets": [
+    {
+      "KeyVaultName": "prod-key-vault",
+      "SecretName": "database-password",
+      "ExpiryDate": "2025-08-15 00:00:00 UTC",
+      "DaysUntilExpiry": 13,
+      "Status": "Expiring",
+      "Created": "2024-01-15 10:30:00 UTC",
+      "Updated": "2024-06-01 14:20:00 UTC",
+      "Enabled": true,
+      "Version": "abc123",
+      "Tags": {
+        "Environment": "Production",
+        "Owner": "DatabaseTeam"
+      }
+    }
+  ],
+  "Message": "Found 4 expiring or expired secrets across 2 Key Vaults.",
+  "Notes": [
+    "Only secrets with expiration dates are checked for expiration.",
+    "Ensure the Function App's managed identity has 'Key Vault Secrets User' or 'Key Vault Reader' role on all Key Vaults."
+  ]
+}
+```
+
+#### Error Response
+
+```json
+{
+  "Success": false,
+  "Error": "Error checking Key Vault secrets: Access denied",
+  "Details": "The user or application does not have access to the key vault.",
+  "AuthenticationNote": "Ensure the Function App's managed identity has 'Key Vault Secrets User' or 'Key Vault Reader' role on the Key Vaults."
+}
+```
+
+### Required Permissions for Key Vault Function
+
+#### Production (Managed Identity)
+
+- **Key Vault**: `Key Vault Secrets User` or `Key Vault Reader` role on each Key Vault
+- **Subscription**: `Reader` role to list Key Vaults
+
+#### Local Development
+
+- Your Azure account needs the same permissions as listed above
+
+---
+
 ## Local Development & Testing
 
 ### Prerequisites for Local Testing
@@ -154,15 +299,21 @@ curl "https://your-function-app.azurewebsites.net/api/check-enterprise-applicati
 ### Running Locally
 
 ```bash
-# Option 1: Use the provided test script
+# Option 1: Use the provided test scripts
+
+# Test Enterprise Applications function
 ./test-local.ps1
 
-# Option 2: Use Azure Functions Core Tools
+# Test Key Vault secrets function
+./test-keyvault-local.ps1
+
+# Option 2: Use Azure Functions Core Tools (runs both functions)
 func start
 ```
 
 ### Test Script Features
 
+- **Separate test scripts** for each function type
 - Automatically installs required PowerShell modules
 - Simulates the Azure Function runtime environment
 - Supports all query parameters
