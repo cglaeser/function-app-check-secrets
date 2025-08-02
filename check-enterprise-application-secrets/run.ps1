@@ -7,6 +7,22 @@ param($Request, $TriggerMetadata)
 Write-Host "PowerShell HTTP trigger function started - Checking Enterprise Application secrets and certificates."
 
 try {
+    # Install and import required modules for Flex Consumption Plan
+    Write-Host "Installing and importing required PowerShell modules..."
+    $requiredModules = @(
+        'Microsoft.Graph.Authentication',
+        'Microsoft.Graph.Applications'
+    )
+    
+    foreach ($module in $requiredModules) {
+        if (-not (Get-Module -ListAvailable -Name $module)) {
+            Write-Host "Installing module: $module"
+            Install-Module -Name $module -Force -AllowClobber -Scope CurrentUser -Repository PSGallery
+        }
+        Write-Host "Importing module: $module"
+        Import-Module $module -Force
+    }
+    
     # Get query parameters
     $daysThreshold = [int]($Request.Query.DaysThreshold ?? 30)
     $appId = $Request.Query.AppId

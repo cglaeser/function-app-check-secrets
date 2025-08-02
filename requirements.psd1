@@ -2,10 +2,7 @@
 # See https://aka.ms/functionsmanageddependency for additional information.
 #
 @{
-    # Azure PowerShell modules for Microsoft Graph and Key Vault operations
-    'Microsoft.Graph.Authentication' = '2.*'
-    'Microsoft.Graph.Applications' = '2.*'
-    'Microsoft.Graph.Identity.SignIns' = '2.*'
-    'Az.Accounts' = '3.*'
-    'Az.KeyVault' = '4.*'
+    # For latest supported version, go to 'https://www.powershellgallery.com/packages/Az'. 
+    # To use the Az module in your function app, please uncomment the line below.
+    # 'Az' = '14.*'
 }

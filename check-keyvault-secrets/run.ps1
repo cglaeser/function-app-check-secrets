@@ -7,6 +7,22 @@ param($Request, $TriggerMetadata)
 Write-Host "PowerShell HTTP trigger function started - Checking Key Vault secrets for expiration."
 
 try {
+        # Install and import required modules for Flex Consumption Plan
+    Write-Host "Installing and importing required PowerShell modules..."
+    $requiredModules = @(
+        'Az.Accounts',
+        'Az.KeyVault'
+    )
+    
+    foreach ($module in $requiredModules) {
+        if (-not (Get-Module -ListAvailable -Name $module)) {
+            Write-Host "Installing module: $module"
+            Install-Module -Name $module -Force -AllowClobber -Scope CurrentUser -Repository PSGallery
+        }
+        Write-Host "Importing module: $module"
+        Import-Module $module -Force
+    }
+    
     # Get query parameters
     $daysThreshold = [int]($Request.Query.DaysThreshold ?? 30)
     $keyVaultName = $Request.Query.KeyVaultName
@@ -76,6 +92,7 @@ try {
     
     # Initialize results array
     $results = @()
+    $keyVaultsChecked = @()
     $summary = @{
         TotalKeyVaultsChecked = 0
         TotalSecretsChecked = 0
@@ -114,6 +131,16 @@ try {
         Write-Host "Checking Key Vault: $($kv.VaultName)"
         
         $keyVaultHasExpiringSecrets = $false
+        $keyVaultInfo = @{
+            VaultName = $kv.VaultName
+            ResourceGroupName = $kv.ResourceGroupName
+            Location = $kv.Location
+            SecretsChecked = 0
+            ExpiringSecrets = 0
+            ExpiredSecrets = 0
+            Status = "Unknown"
+            ErrorMessage = $null
+        }
         
         try {
             # Get all secrets in the Key Vault
@@ -127,6 +154,7 @@ try {
                 Write-Host "  Found $($secrets.Count) secrets in Key Vault"
             }
             
+            $keyVaultInfo.SecretsChecked = $secrets.Count
             $summary.TotalSecretsChecked += $secrets.Count
             
             foreach ($secret in $secrets) {
@@ -161,9 +189,11 @@ try {
                             
                             if ($isExpired) {
                                 $summary.ExpiredSecrets++
+                                $keyVaultInfo.ExpiredSecrets++
                                 Write-Host "    - EXPIRED Secret: $($secret.Name), Expired on $($expiryDate.ToString('yyyy-MM-dd'))"
                             } else {
                                 $summary.ExpiringSecrets++
+                                $keyVaultInfo.ExpiringSecrets++
                                 Write-Host "    - EXPIRING Secret: $($secret.Name), Expires in $daysUntilExpiry days ($($expiryDate.ToString('yyyy-MM-dd')))"
                             }
                         }
@@ -202,6 +232,9 @@ try {
             
             $results += $inaccessibleInfo
         }
+        
+        # Add Key Vault info to tracking array
+        $keyVaultsChecked += $keyVaultInfo
     }
     
     # Disconnect from Azure

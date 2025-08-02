@@ -12,7 +12,27 @@ This Azure Function App contains multiple functions to check for expired and exp
 ### 2. **Key Vault Secrets Expiration Checker**
 
 - **Endpoint**: `/api/check-key-vault-secrets`
-- **Purpose**: Checks expired/expiring secrets across all Key Vaults in a subscription
+- **Purpose**: Checks expired/expiring secrets across all Key Vaults in a subs2. **Flex Consumption Plan Specific Issues**:
+  - **Cold start delays**: Normal for first invocation, subsequent calls should be faster
+  - **Module installation timeouts**: First run may take 2-3 minutes to install PowerShell modules
+  - **"Module not found" errors**: Runtime module installation failure - check function logs
+  - **Virtual network configuration**: Ensure managed identity has proper network access
+  - **Regional availability**: Flex Consumption Plan is available in limited regions initially
+
+3. **PowerShell Module Issues (Flex Consumption Plan)**:
+
+   ```
+   Install-Module: The specified module 'Microsoft.Graph.Authentication' was not loaded
+   ```
+
+   **Solution**: This is expected behavior - modules install at runtime, not at deployment
+
+   - First execution may take longer due to module installation
+   - Subsequent executions will be faster
+   - Monitor Application Insights for installation progress
+
+4. **"Storage account not found"**: Ensure the storage account exists and is accessible
+5. **"Function runtime not starting"**: Check that PowerShell 7.4 runtime is configured correctly
 
 ## Features
 
@@ -39,12 +59,38 @@ This function supports two authentication methods:
 - Used when running locally for testing
 - Opens browser for Azure AD authentication
 - Requires user with appropriate permissions
-- Automatically detected when not in Azure environment## Prerequisites
+- Automatically detected when not in Azure environment
+
+## Prerequisites
 
 ### 1. Azure Function App Configuration
 
 - **Runtime**: PowerShell 7.4
+- **Hosting Plan**: Flex Consumption Plan (recommended) or traditional Consumption Plan
 - **Managed Identity**: System-assigned managed identity must be enabled
+- **Functions Version**: 4.x
+
+#### Flex Consumption Plan Benefits
+
+- ✅ **Faster cold starts** with pre-warmed instances
+- ✅ **Better performance** with optimized scaling
+- ✅ **Enhanced security** with virtual network integration
+- ✅ **Cost optimization** with per-second billing
+
+#### ⚠️ Flex Consumption Plan Limitations
+
+- ❌ **Managed Dependencies Not Supported**: PowerShell modules must be installed at runtime
+- 🔧 **Workaround**: Functions automatically install required modules on first run
+- ⏱️ **Cold Start Impact**: First execution may take longer due to module installation
+- 💡 **Recommendation**: Consider pre-warming for production scenarios
+
+#### Module Installation Strategy
+
+The functions use runtime module installation instead of managed dependencies:
+
+- Modules are installed to `CurrentUser` scope during function execution
+- Installation happens only if modules are not already available
+- Subsequent executions reuse installed modules for better performance
 
 ### 2. Required Permissions
 
@@ -447,12 +493,22 @@ az storage account create \
   --sku Standard_LRS \
   --kind StorageV2
 
-# Create Function App
+# Create Function App (Traditional Consumption Plan)
 az functionapp create \
   --name $FUNCTION_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --storage-account $STORAGE_ACCOUNT_NAME \
   --consumption-plan-location "$LOCATION" \
+  --runtime powershell \
+  --runtime-version 7.4 \
+  --functions-version 4
+
+# OR Create Function App (Flex Consumption Plan - Recommended for new deployments)
+az functionapp create \
+  --name $FUNCTION_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --storage-account $STORAGE_ACCOUNT_NAME \
+  --flexconsumption-location "$LOCATION" \
   --runtime powershell \
   --runtime-version 7.4 \
   --functions-version 4
@@ -593,27 +649,36 @@ traces
 
 #### Deployment Issues
 
-1. **"AzureWebJobsStorage" Error**: 
+1. **"AzureWebJobsStorage" Error**:
+
    ```
    Neither AzureWebJobsStorage nor AzureWebJobsStorage__accountName exist in app settings
    ```
+
    **Solution**: Configure storage account connection
+
    ```bash
    # Option A: Use connection string
    az functionapp config appsettings set \
      --name $FUNCTION_APP_NAME \
      --resource-group $RESOURCE_GROUP \
      --settings "AzureWebJobsStorage=$(az storage account show-connection-string --name $STORAGE_ACCOUNT_NAME --resource-group $RESOURCE_GROUP --output tsv)"
-   
-   # Option B: Use managed identity (recommended)
+
+   # Option B: Use managed identity (recommended for Flex Consumption Plan)
    az functionapp config appsettings set \
      --name $FUNCTION_APP_NAME \
      --resource-group $RESOURCE_GROUP \
      --settings "AzureWebJobsStorage__accountName=$STORAGE_ACCOUNT_NAME"
    ```
 
-2. **"Storage account not found"**: Ensure the storage account exists and is accessible
-3. **"Function runtime not starting"**: Check that PowerShell 7.4 runtime is configured correctly
+2. **Flex Consumption Plan Specific Issues**:
+
+   - **Cold start delays**: Normal for first invocation, subsequent calls should be faster
+   - **Virtual network configuration**: Ensure managed identity has proper network access
+   - **Regional availability**: Flex Consumption Plan is available in limited regions initially
+
+3. **"Storage account not found"**: Ensure the storage account exists and is accessible
+4. **"Function runtime not starting"**: Check that PowerShell 7.4 runtime is configured correctly
 
 #### Production (Azure)
 
